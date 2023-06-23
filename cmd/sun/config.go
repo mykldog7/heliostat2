@@ -12,6 +12,10 @@ type Config struct {
 		Lat  float64 `json:"lat"`
 		Long float64 `json:"long"`
 	} `json:"loc"`
+	Target struct {
+		Elevation float64 `json:"ele"`
+		Azimuth   float64 `json:"azi"`
+	}
 }
 
 func (c Config) String() string {
