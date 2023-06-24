@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -9,13 +10,18 @@ import (
 	"net/http"
 	"time"
 
-	"golang.org/x/time/rate"
-
 	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
 )
 
-func startWebsocketServer(address string, ctx context.Context, inward chan<- interface{}, outward <-chan interface{}) error {
+type wsHandler struct {
+	// logf controls where logs are sent.
+	logf func(f string, v ...interface{})
+
+	inward  chan<- interface{}
+	outward chan []byte
+}
+
+func startWebsocketServer(address string, ctx context.Context, inward chan<- interface{}, outward chan []byte) error {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
@@ -30,24 +36,18 @@ func startWebsocketServer(address string, ctx context.Context, inward chan<- int
 		ReadTimeout:  time.Second * 10,
 		WriteTimeout: time.Second * 10,
 	}
-	errc := make(chan error, 1)
+	errC := make(chan error, 1)
 	go func() {
-		errc <- s.Serve(l)
+		errC <- s.Serve(l)
 	}()
 
 	select {
-	case err := <-errc:
+	case err := <-errC:
 		log.Printf("failed to serve: %v", err)
 	case <-ctx.Done():
 		return s.Shutdown(ctx)
 	}
-}
-
-type wsHandler struct {
-	// logf controls where logs are sent.
-	logf    func(f string, v ...interface{})
-	inward  chan<- interface{}
-	outward <-chan interface{}
+	return nil
 }
 
 func (s wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -61,51 +61,77 @@ func (s wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer c.Close(websocket.StatusInternalError, "connection closing")
 
-	l := rate.NewLimiter(rate.Every(time.Millisecond*100), 10)
-	for {
-		err = manageWebsocketConnection(r.Context(), c, l)
-		if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
-			return
-		}
-		if err != nil {
-			s.logf("failed to echo with %v: %v", r.RemoteAddr, err)
-			return
-		}
+	log.Printf("success websocket connection, passing to handler...")
+
+	err = s.manageWebsocketConnection(r.Context(), c)
+	if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
+		return
+	}
+	if err != nil {
+		s.logf("failed to responde to %v: %v", r.RemoteAddr, err)
+		return
 	}
 }
 
-func manageWebsocketConnection(ctx context.Context, c *websocket.Conn, l *rate.Limiter) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
+func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.Conn) error {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	err := l.Wait(ctx)
-	if err != nil {
-		return err
-	}
+	//errC channel, any error terminates the connection
+	errC := make(chan error)
+	//reader, whenever something can be read, read it then send onwards(to control loop)
+	go func() {
+		for {
+			typ, r, err := c.Reader(ctx)
+			if err != nil {
+				errC <- err
+			}
+			if typ != websocket.MessageText {
+				s.outward <- []byte("only text(json) websocket messages can be handled")
+				continue
+			}
 
-	incoming_config := Config{}
-	fmt.Printf("%v", incoming_config)
-	err = wsjson.Read(ctx, c, &incoming_config)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("%v", incoming_config)
+			b, err := io.ReadAll(r)
+			if err != nil {
+				errC <- err
+			}
 
-	typ, r, err := c.Reader(ctx)
-	if err != nil {
-		return err
-	}
+			msg := Message{}
+			err = json.Unmarshal(b, &msg)
+			if err != nil {
+				s.outward <- []byte("invalid json. connection terminated.")
+				c.Close(websocket.StatusUnsupportedData, "invalid json")
+				errC <- err
+				continue
+			}
 
-	w, err := c.Writer(ctx, typ)
-	if err != nil {
-		return err
-	}
+			switch msg.T {
+			case "UpdateConfig":
+				uc := UpdateConfig{}
+				json.Unmarshal(b, &uc)
+				s.inward <- uc
+			default:
+				log.Printf("unhandled message type:%v", msg.T)
+				s.outward <- []byte(fmt.Sprintf("cant process type: %v", msg.T))
+			}
+		}
+	}()
 
-	_, err = io.Copy(w, r)
-	if err != nil {
-		return fmt.Errorf("failed to io.Copy: %w", err)
-	}
+	//sender, anything on 'out' queue is written to websocket
+	go func() {
+		for {
+			m := <-s.outward
+			w, err := c.Writer(ctx, websocket.MessageText)
+			if err != nil {
+				errC <- err
+			}
+			w.Write(m)
+			err = w.Close()
+			if err != nil {
+				errC <- err
+			}
+		}
+	}()
 
-	err = w.Close()
-	return err
+	return <-errC
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
@@ -12,19 +13,28 @@ func main() {
 
 	log.SetFlags(0)
 
-	fromWebsocket := make(chan interface{})
-	toWebsocket := make(chan interface{})
+	inwards := make(chan interface{})
+	outwards := make(chan []byte)
+	go func() {
+		outwards <- []byte("welcome")
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	go func() {
-		err := startWebsocketServer("localhost:8080", fromWebsocket, toWebsocket)
+		err := startWebsocketServer("localhost:8080", ctx, inwards, outwards)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}()
-	for {
-		select {
-		case sig := <-sigs:
-			log.Printf("terminating: %v", sig)
+	//later this will be replaced by the control loop
+	go func() {
+		for {
+			log.Printf("in:%v", <-inwards)
 		}
-	}
+	}()
+	//wait for a termination signal
+	<-sigs
+	log.Printf("terminating")
 }
