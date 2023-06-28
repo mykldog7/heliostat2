@@ -7,7 +7,6 @@ import (
 // Config is used to store the core configuration of the heliostat at the present time.
 // example: {"name":"test", "loc":{"lat": 130, "long": -42}}
 type Config struct {
-	Name     string `json:"name"`
 	Location struct {
 		Lat  float64 `json:"lat"`
 		Long float64 `json:"long"`

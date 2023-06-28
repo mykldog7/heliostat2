@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"time"
 )
 
 func main() {
@@ -15,12 +16,8 @@ func main() {
 
 	inwards := make(chan interface{})
 	outwards := make(chan []byte)
-	go func() {
-		outwards <- []byte("welcome")
-	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	go func() {
 		err := startWebsocketServer("localhost:8080", ctx, inwards, outwards)
@@ -30,11 +27,16 @@ func main() {
 	}()
 	//later this will be replaced by the control loop
 	go func() {
-		for {
-			log.Printf("in:%v", <-inwards)
+		Controller := NewController(inwards, outwards)
+		err := Controller.Start(ctx)
+		if err != nil {
+			log.Fatalf("Problem with controller %v", err)
 		}
+		log.Print("Controller shutdown completed")
 	}()
-	//wait for a termination signal
+	//wait for a termination signal, then clean-up when its recieved
 	<-sigs
+	cancel()
 	log.Printf("terminating")
+	time.Sleep(2 * time.Second)
 }

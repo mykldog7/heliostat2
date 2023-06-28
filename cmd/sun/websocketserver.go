@@ -13,25 +13,28 @@ import (
 	"nhooyr.io/websocket"
 )
 
+// websocket handler is instantiated each time we have a client connect
+// it must register its outward channel with the SubManager to get outward messages
 type wsHandler struct {
 	// logf controls where logs are sent.
-	logf func(f string, v ...interface{})
-
+	logf    func(f string, v ...interface{})
 	inward  chan<- interface{}
-	outward chan []byte
+	manager *SubManager
 }
 
-func startWebsocketServer(address string, ctx context.Context, inward chan<- interface{}, outward chan []byte) error {
+func startWebsocketServer(address string, ctx context.Context, inward chan<- interface{}, publish chan []byte) error {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
 	}
 	log.Printf("listening on http://%v", l.Addr())
+	sm := NewSubManger(publish)
+	sm.Start()
 	s := &http.Server{
 		Handler: wsHandler{
 			logf:    log.Printf,
 			inward:  inward,
-			outward: outward,
+			manager: sm,
 		},
 		ReadTimeout:  time.Second * 10,
 		WriteTimeout: time.Second * 10,
@@ -65,10 +68,11 @@ func (s wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	err = s.manageWebsocketConnection(r.Context(), c)
 	if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
+		s.logf("closed websocket")
 		return
 	}
 	if err != nil {
-		s.logf("failed to responde to %v: %v", r.RemoteAddr, err)
+		s.logf("error with websocket to %v: %v", r.RemoteAddr, err)
 		return
 	}
 }
@@ -77,8 +81,35 @@ func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.C
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	//create outward channel, and register it to receive 'publish' messages
+	outward := make(chan []byte)
+	s.manager.AddSub(outward)
+
+	//start a waiting go routine, when the ctx is cancelled(ie we have the end of the connection, then unregister our channel)
+	go func() {
+		<-ctx.Done()
+		s.manager.RemoveSub(outward)
+	}()
+
 	//errC channel, any error terminates the connection
 	errC := make(chan error)
+
+	//sender, anything on 'out' queue is written to websocket
+	go func() {
+		for {
+			m := <-outward
+			w, err := c.Writer(ctx, websocket.MessageText)
+			if err != nil {
+				errC <- err
+			}
+			w.Write(m)
+			err = w.Close()
+			if err != nil {
+				errC <- err
+			}
+		}
+	}()
+
 	//reader, whenever something can be read, read it then send onwards(to control loop)
 	go func() {
 		for {
@@ -87,7 +118,7 @@ func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.C
 				errC <- err
 			}
 			if typ != websocket.MessageText {
-				s.outward <- []byte("only text(json) websocket messages can be handled")
+				outward <- []byte("only text(json) websocket messages can be handled")
 				continue
 			}
 
@@ -99,36 +130,18 @@ func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.C
 			msg := Message{}
 			err = json.Unmarshal(b, &msg)
 			if err != nil {
-				s.outward <- []byte("invalid json. connection terminated.")
-				c.Close(websocket.StatusUnsupportedData, "invalid json")
-				errC <- err
+				outward <- []byte("unhandled: need valid json")
 				continue
 			}
 
 			switch msg.T {
-			case "UpdateConfig":
-				uc := UpdateConfig{}
+			case "config":
+				uc := Config{}
 				json.Unmarshal(b, &uc)
 				s.inward <- uc
 			default:
 				log.Printf("unhandled message type:%v", msg.T)
-				s.outward <- []byte(fmt.Sprintf("cant process type: %v", msg.T))
-			}
-		}
-	}()
-
-	//sender, anything on 'out' queue is written to websocket
-	go func() {
-		for {
-			m := <-s.outward
-			w, err := c.Writer(ctx, websocket.MessageText)
-			if err != nil {
-				errC <- err
-			}
-			w.Write(m)
-			err = w.Close()
-			if err != nil {
-				errC <- err
+				outward <- []byte(fmt.Sprintf("cant process type(check \"t\" key?): %v", msg.T))
 			}
 		}
 	}()
