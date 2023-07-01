@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 )
@@ -43,6 +44,7 @@ func (c Controller) Start(ctx context.Context) error {
 		case tick := <-ticker.C:
 			//apply update to robot? tick holds the time
 			log.Printf("stub move robot at: %v", tick)
+			c.out <- []byte(fmt.Sprintf("update:%v", tick))
 		}
 	}
 }

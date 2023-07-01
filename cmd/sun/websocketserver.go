@@ -29,7 +29,6 @@ func startWebsocketServer(address string, ctx context.Context, inward chan<- int
 	}
 	log.Printf("listening on http://%v", l.Addr())
 	sm := NewSubManger(publish)
-	sm.Start()
 	s := &http.Server{
 		Handler: wsHandler{
 			logf:    log.Printf,
@@ -40,13 +39,18 @@ func startWebsocketServer(address string, ctx context.Context, inward chan<- int
 		WriteTimeout: time.Second * 10,
 	}
 	errC := make(chan error, 1)
+	//start SubManager
+	go func() {
+		errC <- sm.Start()
+	}()
+	//start HTTP server
 	go func() {
 		errC <- s.Serve(l)
 	}()
 
 	select {
 	case err := <-errC:
-		log.Printf("failed to serve: %v", err)
+		log.Printf("failed with error: %v", err)
 	case <-ctx.Done():
 		return s.Shutdown(ctx)
 	}

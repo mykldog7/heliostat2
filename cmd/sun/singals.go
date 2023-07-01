@@ -12,6 +12,7 @@ type Message struct {
 
 //incoming signals (to be processed by the server)
 //Config <- see config.go
+//{"t":"config", "loc":{"lat":1,"long":100}}
 
 //Used to move the target in a particular direction
 type MoveTargetRelative struct {
