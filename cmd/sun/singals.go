@@ -4,10 +4,10 @@ import "time"
 
 //This file contains all the types of messages that are expected to be sent and recieved from the websocket server
 
-//Message is the wrapper for all messages, it contains a string identifying the type of message
+//Message is the wrapper for all messages, it contains a string identifying the type of message and the message data
 type Message struct {
-	T string                 `json:"t"`
-	D map[string]interface{} `json:"d"`
+	T string `json:"t"`
+	D []byte
 }
 
 //incoming signals (to be processed by the server)
@@ -16,8 +16,8 @@ type Message struct {
 
 //Used to move the target in a particular direction
 type MoveTargetRelative struct {
-	Direction string  `json:"dir"`
-	Degree    float64 `json:"deg"`
+	Direction string  `json:"direction"` //expected up down left, right
+	Amount    float64 `json:"radians"`
 }
 
 //Provide an immediate 'override' time to the system(it should have its own internal clock, but this can override that)
@@ -40,6 +40,7 @@ type Ack struct {
 
 func NewAck(s bool) Ack { return Ack{Success: s} }
 
+//Outward signals, published by the robot to ws subscribers
 //sent whenever the mirror repositions
 type Reposition struct {
 	Time      time.Time `json:"time"`

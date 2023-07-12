@@ -12,8 +12,8 @@ type Config struct {
 		Long float64 `json:"long"`
 	} `json:"loc"`
 	Target struct {
-		Elevation float64 `json:"ele"`
-		Azimuth   float64 `json:"azi"`
+		Altitude float64 `json:"alt"`
+		Azimuth  float64 `json:"azi"`
 	}
 }
 

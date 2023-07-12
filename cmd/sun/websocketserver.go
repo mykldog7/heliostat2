@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -18,11 +17,11 @@ import (
 type wsHandler struct {
 	// logf controls where logs are sent.
 	logf    func(f string, v ...interface{})
-	inward  chan<- interface{}
+	inward  chan<- Message
 	manager *SubManager
 }
 
-func startWebsocketServer(address string, ctx context.Context, inward chan<- interface{}, publish chan []byte) error {
+func startWebsocketServer(address string, ctx context.Context, inward chan<- Message, publish chan []byte) error {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
@@ -51,6 +50,7 @@ func startWebsocketServer(address string, ctx context.Context, inward chan<- int
 	select {
 	case err := <-errC:
 		log.Printf("failed with error: %v", err)
+		return err
 	case <-ctx.Done():
 		return s.Shutdown(ctx)
 	}
@@ -114,7 +114,7 @@ func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.C
 		}
 	}()
 
-	//reader, whenever something can be read, read it then send onwards(to control loop)
+	//reader, whenever something can be read, read it then drop or send onwards(to control loop)
 	go func() {
 		for {
 			typ, r, err := c.Reader(ctx)
@@ -134,19 +134,11 @@ func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.C
 			msg := Message{}
 			err = json.Unmarshal(b, &msg)
 			if err != nil {
-				outward <- []byte("unhandled: need valid json")
-				continue
+				outward <- []byte("unhandled: need valid json with 't' key specifying a valid type")
+				continue //not a message we can work with, skip and continue
 			}
-
-			switch msg.T {
-			case "config":
-				uc := Config{}
-				json.Unmarshal(b, &uc)
-				s.inward <- uc
-			default:
-				log.Printf("unhandled message type:%v", msg.T)
-				outward <- []byte(fmt.Sprintf("cant process type(check \"t\" key?): %v", msg.T))
-			}
+			msg.D = b       //save data into message so it can be unmarshalled again later
+			s.inward <- msg //send the msg to the controller to be handled
 		}
 	}()
 
