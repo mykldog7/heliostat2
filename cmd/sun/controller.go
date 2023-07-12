@@ -102,7 +102,6 @@ func (c *Controller) RecalculateTarget() (float64, float64) {
 
 // HandleConfigUpdate updates the 'activeconfig on the controller
 func (c *Controller) HandleConfigUpdate(uc Config) {
-	return
 }
 
 func (c *Controller) HandleTargetAdjustment(m MoveTargetRelative) {
@@ -128,5 +127,4 @@ func (c *Controller) HandleTargetAdjustment(m MoveTargetRelative) {
 			c.activeConfig.Target.Azimuth -= (math.Pi * 2) //wrap around the circle
 		}
 	}
-	return
 }

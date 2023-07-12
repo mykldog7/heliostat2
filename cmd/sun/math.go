@@ -16,7 +16,8 @@ import (
 
 // Utility functions
 func radToDeg(a float64) float64 { return a * 180.0 / math.Pi }
-func degToRad(a float64) float64 { return a * math.Pi / 180.0 }
+
+//func degToRad(a float64) float64 { return a * math.Pi / 180.0 }
 
 // calculateMirrorTarget returns the midpoint at which to point the mirror's normal
 // This is achieved by converting the polar coordinates to cartesian, and then adding the unit vectors,

@@ -54,7 +54,6 @@ func startWebsocketServer(address string, ctx context.Context, inward chan<- Mes
 	case <-ctx.Done():
 		return s.Shutdown(ctx)
 	}
-	return nil
 }
 
 func (s wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

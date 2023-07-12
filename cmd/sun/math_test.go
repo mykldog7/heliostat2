@@ -1,15 +1,19 @@
 package main
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
-//testCase defines the target, sun, and expected mirror position(the mid angle)
+// testCase defines the target, sun, and expected mirror position(the mid angle)
 type testCase struct {
 	targetAzi, targetAlt, sunAzi, sunAlt, midAzi, midAlt float64
 }
 
 var cases = []testCase{
-	testCase{0, 0, 90, 10, 45, 5},
-	testCase{0, 0, 90, 10, 45, 5},
+	{0, 0, math.Pi / 4.0, 0, math.Pi / 8.0, 0},
+	{0, math.Pi / 2.0, 0, 0, 0, math.Pi / 4.0},
+	{math.Pi, math.Pi / 4.0, 0, math.Pi / 4.0, math.Pi / 2.0, math.Pi / 4.0},
 }
 
 func TestMath(tt *testing.T) {
