@@ -1,23 +1,53 @@
-// This file contains functions to tranlate coordinate spaces
-// it translates from
-//
-//	angular degrees(in the real world)
-//
-// to
-//
-//	steps on the stepper motors
-//
-// these calculations are based on ratios of steps to degrees and the ratios may change.
 package main
 
 import (
+	"fmt"
 	"math"
+	"time"
+
+	"github.com/256dpi/gcode"
+	"github.com/sixdouglas/suncalc"
 )
+
+// PositionToGCode builds a GCode command to send the mirror to the desired azi/ele
+func PositionToGCode(azi float64, ele float64) ([]byte, error) {
+	if azi > 180.0 || azi < -180.0 {
+		return nil, fmt.Errorf("unexpected value for azimuth: %v", azi)
+	}
+	if ele > 90.0 || ele < 0.0 {
+		return nil, fmt.Errorf("unexpected value for elevation: %v", ele)
+	}
+	//adjust Azimuth to range 0 -> 360 instead of -180 -> 180... this will allow us to 'zero' the mirror against a 'hard' stop
+	if azi < 0 {
+		azi = 360 + azi
+	}
+
+	line := gcode.Line{
+		Codes: make([]gcode.GCode, 0, 2),
+	}
+	line.Codes = append(line.Codes, gcode.GCode{Letter: "X", Value: azi})
+	line.Codes = append(line.Codes, gcode.GCode{Letter: "Y", Value: ele})
+	return []byte(line.String()), nil
+}
+
+// RecalculateTarget returns the position correct according to configured time
+// Altitude: sun altitude above the horizon in radians, e.g. -1 at the horizon and PI/2 at the zenith (straight over your head)
+// Azimuth: sun azimuth in radians (direction along the horizon, measured from south to west), e.g. -1 is south and Math.PI * 3/4 is northwest
+func (c *Controller) RecalculateDesiredMirrorPosition() (float64, float64) {
+	var instant time.Time
+	if c.usingOverrideTime {
+		instant = c.overrideTime
+	} else {
+		instant = c.localTime
+	}
+	sun := suncalc.GetPosition(instant, c.activeConfig.Location.Lat, c.activeConfig.Location.Long)
+	mirrorAzi, mirrorAlt := calculateMirrorTarget(sun.Azimuth, sun.Altitude, c.activeConfig.Target.Azimuth, c.activeConfig.Target.Altitude)
+	return mirrorAzi, mirrorAlt
+}
 
 // Utility functions
 func radToDeg(a float64) float64 { return a * 180.0 / math.Pi }
-
-//func degToRad(a float64) float64 { return a * math.Pi / 180.0 }
+func degToRad(a float64) float64 { return a * math.Pi / 180.0 }
 
 // calculateMirrorTarget returns the midpoint at which to point the mirror's normal
 // This is achieved by converting the polar coordinates to cartesian, and then adding the unit vectors,

@@ -27,16 +27,15 @@ func main() {
 		}
 	}()
 
-	//Initialize and connect to the GRBL motor controller
-	grbl, err := NewGrblArduino(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	//Controller is used to run the primary control loop, updating calculations and sending commands to grbl
 	go func() {
+		//Initialize and connect to the GRBL motor controller
+		grbl, err := NewGrblArduino(ctx)
+		if err != nil {
+			log.Fatal(err)
+		}
 		Controller := NewController(inwards, publish, grbl)
-		err := Controller.Start(ctx)
+		err = Controller.Start(ctx)
 		if err != nil {
 			log.Fatalf("Problem with controller %v", err)
 		}
