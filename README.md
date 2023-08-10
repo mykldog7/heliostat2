@@ -4,7 +4,7 @@ Work in progress...
 
 Basic architecture:
 
-[Robot] <-> [GRBL on Arduion] <-> [RPI] <-> Site/App?
+[Robot] <-> [GRBL on Arduion] <-> [RPI] <-> Terminal Client 
 
 Robot has two steppers, each controlling azimuth and altitude of a mirror. 
 
