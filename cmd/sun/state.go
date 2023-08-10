@@ -1,10 +1,14 @@
 package main
 
-import "time"
+import (
+	"time"
+
+	"github.com/mykldog7/heliostat2/pkg/types"
+)
 
 type State struct {
-	Config   *Config   `json:"config"`
-	Time     time.Time `json:"time"`
+	Config   *types.Config `json:"config"`
+	Time     time.Time     `json:"time"`
 	Position struct {
 		Elevation float64 `json:"ele"`
 		Azimuth   float64 `json:"azi"`

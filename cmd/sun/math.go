@@ -3,10 +3,8 @@ package main
 import (
 	"fmt"
 	"math"
-	"time"
 
 	"github.com/256dpi/gcode"
-	"github.com/sixdouglas/suncalc"
 )
 
 // PositionToGCode builds a GCode command to send the mirror to the desired azi/ele
@@ -28,21 +26,6 @@ func PositionToGCode(azi float64, ele float64) ([]byte, error) {
 	line.Codes = append(line.Codes, gcode.GCode{Letter: "X", Value: azi})
 	line.Codes = append(line.Codes, gcode.GCode{Letter: "Y", Value: ele})
 	return []byte(line.String()), nil
-}
-
-// RecalculateTarget returns the position correct according to configured time
-// Altitude: sun altitude above the horizon in radians, e.g. -1 at the horizon and PI/2 at the zenith (straight over your head)
-// Azimuth: sun azimuth in radians (direction along the horizon, measured from south to west), e.g. -1 is south and Math.PI * 3/4 is northwest
-func (c *Controller) RecalculateDesiredMirrorPosition() (float64, float64) {
-	var instant time.Time
-	if c.usingOverrideTime {
-		instant = c.overrideTime
-	} else {
-		instant = c.localTime
-	}
-	sun := suncalc.GetPosition(instant, c.activeConfig.Location.Lat, c.activeConfig.Location.Long)
-	mirrorAzi, mirrorAlt := calculateMirrorTarget(sun.Azimuth, sun.Altitude, c.activeConfig.Target.Azimuth, c.activeConfig.Target.Altitude)
-	return mirrorAzi, mirrorAlt
 }
 
 // Utility functions

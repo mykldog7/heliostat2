@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/mykldog7/heliostat2/pkg/types"
 	"nhooyr.io/websocket"
 )
 
@@ -17,11 +18,11 @@ import (
 type wsHandler struct {
 	// logf controls where logs are sent.
 	logf    func(f string, v ...interface{})
-	inward  chan<- Message
+	inward  chan<- types.Message
 	manager *SubManager
 }
 
-func startWebsocketServer(address string, ctx context.Context, inward chan<- Message, publish chan []byte) error {
+func startWebsocketServer(address string, ctx context.Context, inward chan<- types.Message, publish chan []byte) error {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
@@ -106,6 +107,7 @@ func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.C
 				errC <- err
 			}
 			w.Write(m)
+			log.Printf("write mesg:%v", string(m))
 			err = w.Close()
 			if err != nil {
 				errC <- err
@@ -129,8 +131,9 @@ func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.C
 			if err != nil {
 				errC <- err
 			}
+			log.Printf("read mesg: %v", string(b))
 
-			msg := Message{}
+			msg := types.Message{}
 			err = json.Unmarshal(b, &msg)
 			if err != nil {
 				outward <- []byte("unhandled: need valid json with 't' key specifying a valid type")

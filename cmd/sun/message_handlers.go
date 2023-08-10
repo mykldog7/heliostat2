@@ -1,18 +1,31 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"math"
+
+	"github.com/mykldog7/heliostat2/pkg/types"
 )
 
 // HandleConfigUpdate updates the 'activeconfig on the controller
-func (c *Controller) HandleConfigUpdate(uc Config) {
+func (c *Controller) HandleGetActiveConfig() {
+	log.Printf("GetActiveConfig")
+	bytes, err := json.Marshal(c.activeConfig)
+	if err != nil {
+		log.Print(err)
+	}
+	c.publish <- bytes
+}
+
+// HandleConfigUpdate updates the 'activeconfig on the controller
+func (c *Controller) HandleConfigUpdate(uc types.Config) {
 	log.Printf("UpdateConfig")
 	c.activeConfig.Location.Lat = uc.Location.Lat
 	c.activeConfig.Location.Long = uc.Location.Long
 }
 
-func (c *Controller) HandleTargetAdjustment(m MoveTargetRelative) {
+func (c *Controller) HandleTargetAdjustment(m types.MoveTargetRelative) {
 	log.Printf("TargetAdjustment")
 	switch m.Direction {
 	case "up":

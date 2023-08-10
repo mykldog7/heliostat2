@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"time"
+
+	"github.com/mykldog7/heliostat2/pkg/types"
 )
 
 func main() {
@@ -14,8 +16,8 @@ func main() {
 
 	log.SetFlags(0)
 
-	inwards := make(chan Message) //messages coming into the controller
-	publish := make(chan []byte)  //messages to be pushed out to each subscriber
+	inwards := make(chan types.Message) //messages coming into the controller
+	publish := make(chan []byte)        //messages to be pushed out to each subscriber
 
 	ctx, cancel := context.WithCancel(context.Background())
 

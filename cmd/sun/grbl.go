@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"go.bug.st/serial"
@@ -14,10 +15,9 @@ import (
 //Useful docs on details of communicating with Grbl: https://github.com/gnea/grbl/issues/822
 
 type GrblArduino struct {
-	fromGrbl chan []byte
-	toGrbl   chan []byte
 	port     serial.Port
 	portName string
+	mutex    sync.Mutex
 }
 
 func NewGrblArduino(ctx context.Context) (*GrblArduino, error) {
@@ -25,10 +25,7 @@ func NewGrblArduino(ctx context.Context) (*GrblArduino, error) {
 		BaudRate: 115200, //adjust baud here, or other serial connection settings
 	}
 
-	grbl := GrblArduino{
-		toGrbl:   make(chan []byte),
-		fromGrbl: make(chan []byte),
-	}
+	grbl := GrblArduino{}
 
 	//Connect to each port scanning for the one that is the grbl arduino
 	err := grbl.Connect(mode)
@@ -37,24 +34,22 @@ func NewGrblArduino(ctx context.Context) (*GrblArduino, error) {
 	}
 	log.Printf("Connected to Grbl on %v\n", grbl.portName)
 
-	//Control loop, writes to fromGrbl, sends from toGrbl, terminates on ctx.Done
+	//Control loop, manages grbl status pings.
 	go func() {
 		log.Printf("Grbl control loop started...")
+		grblPingFreq, _ := time.ParseDuration(("1000ms"))
+		statusPing := time.NewTicker(grblPingFreq)
 		for {
 			select {
 			case <-ctx.Done():
 				grbl.port.Close()
 				log.Printf("Grbl control loop terminated.")
 				return
-			case msg := <-grbl.toGrbl:
-				resp, err := grbl.GrblSendCommandGetResponse(msg)
-				if err != nil {
-					log.Fatal(err)
-				}
-				if !bytes.Equal(resp, []byte("ok")) {
-					log.Printf("!ok response from grbl: %v", resp)
-				}
-				grbl.fromGrbl <- resp
+
+			case <-statusPing.C:
+				grbl.GetStatus()
+				//stat, _ := grbl.GetStatus()
+				//log.Printf("stat:%v", string(stat))
 			}
 		}
 	}()
@@ -77,11 +72,12 @@ func (g *GrblArduino) Connect(mode *serial.Mode) error {
 		p, err := serial.Open(port, mode)
 		if err != nil {
 			log.Printf("error with port %v: %v", port, err)
-			log.Printf("trying next serial port")
 			continue
 		}
+
 		g.port = p
 		g.portName = port
+		g.port.SetReadTimeout(time.Second * 2)
 		err = g.GrblReadBanner()
 		if err != nil {
 			log.Printf("error detecting banner on port %v: %v", port, err)
@@ -93,81 +89,96 @@ func (g *GrblArduino) Connect(mode *serial.Mode) error {
 }
 
 func (g *GrblArduino) GrblSendCommandGetResponse(c []byte) ([]byte, error) {
+	//only 1 reader/writer at a time or we get response messages confused
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
 	if len(c) == 0 {
 		log.Print("need a command to send to grbl, got nothing")
 		return []byte(""), nil
 	}
+	// write command
 	n, err := g.port.Write(c)
 	if n != len(c) || err != nil {
 		return []byte(""), fmt.Errorf("error writing to Grbl, or unexpected number of bytes")
 	}
-	//storage to gather response
+	// read response
+	resp, err := g.readLine()
+	if err != nil {
+		return nil, err
+	}
+	//did the response contain ok?
+	if bytes.Equal(resp, []byte("ok\r\n")) {
+		return resp, nil
+	}
+	return resp, fmt.Errorf("grbl reports error: %v", string(resp))
+}
+
+// GrblReadBanner is used to read the startup banner.
+func (g *GrblArduino) GrblReadBanner() error {
+	//only 1 reader/writer at a time or we get response messages confused
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+	//storage to gather bytes
+	_, err := g.port.Write([]byte{0xd, 0xa, 0xd, 0xa}) // wake up grbl
+	time.Sleep(2 * time.Second)                        // give it a chance to come up
+	if err != nil {
+		return err
+	}
+	var line []byte
+	line, err = g.readLine()
+	if err != nil {
+		return err
+	}
+	if strings.Contains(string(line), "Grbl") {
+		return nil
+	}
+	return fmt.Errorf("no Grbl banner found")
+}
+
+// readLine reads a line(terminated by /r/n) from grbl, used when a real-time command causes grbl to print the current status
+func (g *GrblArduino) readLine() ([]byte, error) {
+	//read a byte and append it if available.. when a \r\n is recieved we have the banner
 	buff := make([]byte, 1)
-	line := make([]byte, 0, 82)
-	lineStatus := make([]byte, 0, 4)
-	lineComplete := false
-	//ready a byte and append it if available.. when a \r\n is recieved we have a 'line' then check if its 'ok|error'
+	line := make([]byte, 0, 80)
 	for {
-		n, _ := g.port.Read(buff)
-		if n == 0 {
-			continue
+		n, err := g.port.Read(buff)
+		//log.Printf("new bytes:%v, line:%v", n, string(line))
+		if err != nil {
+			return nil, err
 		}
-		switch lineComplete {
-		case false:
+		if n == 0 {
+			return nil, fmt.Errorf("no bytes from Grbl before timeout")
+		}
+		if n > 0 {
 			line = append(line, buff...)
-			if len(line) > 2 {
-				if bytes.Equal(line[len(line)-2:], []byte("\r\n")) {
-					lineComplete = true
+			//have we collected more than 2 bytes?
+			if len(line) >= 2 {
+				//if the line is "\r\n" then zero it and read the next line instead
+				if len(line) == 2 && bytes.Equal(line, []byte("\r\n")) {
+					line = make([]byte, 0, 80)
+					continue
 				}
-			}
-		case true:
-			lineStatus = append(lineStatus, buff...)
-			if len(lineStatus) > 2 {
-				if bytes.Equal(lineStatus[len(lineStatus)-2:], []byte("\r\n")) {
-					if bytes.Equal(lineStatus, []byte("ok\r\n")) {
-						return line, nil
-					} else {
-						return line, fmt.Errorf("grbl reports error: %v", string(lineStatus))
-					}
+				//are the 'last' two bytes an end of line marker?
+				if bytes.Equal(line[len(line)-2:], []byte("\r\n")) {
+					return line, nil
 				}
 			}
 		}
 	}
 }
 
-// GrblReadBanner is used to read the startup banner.
-func (g *GrblArduino) GrblReadBanner() error {
-	//storage to gather bytes
-	buff := make([]byte, 1)
-	line := make([]byte, 0, 82)
-	_, err := g.port.Write([]byte("\r\n\r\n")) // wake up grbl
-	time.Sleep(2 * time.Second)                // give it a chance to come up
+// GetStatus sends the real-time command '?' to grbl and reports the response.
+func (g *GrblArduino) GetStatus() ([]byte, error) {
+	//only 1 reader/writer at a time or we get response messages confused
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+	if g.port == nil {
+		return []byte{}, fmt.Errorf("can't get status if not connected")
+	}
+	g.port.Write([]byte("?"))
+	line, err := g.readLine()
 	if err != nil {
-		return err
+		return []byte{}, err
 	}
-	//read a byte and append it if available.. when a \r\n is recieved we have the banner
-	for {
-		g.port.SetReadTimeout(time.Second * 2)
-		n, err := g.port.Read(buff)
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return fmt.Errorf("no bytes from Grbl before timeout")
-		}
-		if n > 0 {
-			line = append(line, buff...)
-			//have we collected more than 2 bytes?
-			if len(line) > 2 {
-				//are the 'last' two bytes an end of line marker?
-				if bytes.Equal(line[len(line)-2:], []byte("\r\n")) {
-					//does the line contain the 'Grbl' banner?
-					if strings.Contains(string(line), "Grbl") {
-						return nil
-					}
-					return fmt.Errorf("no Grbl banner found")
-				}
-			}
-		}
-	}
+	return line, nil
 }
