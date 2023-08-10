@@ -12,17 +12,25 @@ func adjustTargetEventHandler(e *tcell.EventKey) *tcell.EventKey {
 		//log.Printf("rune:%v", ch)
 		switch ch {
 		case 'w':
-			err := client.updateTarget("up", currentMoveSize)
+			err := updateTarget("up", currentMoveSize)
 			if err != nil {
 				log.Fatalf("updateT err: %v", err)
 			}
-			//app.QueueUpdateDraw(displayAdjustTarget)
 		case 'a':
-			client.updateTarget("left", currentMoveSize)
+			err := updateTarget("left", currentMoveSize)
+			if err != nil {
+				log.Fatalf("updateT err: %v", err)
+			}
 		case 's':
-			client.updateTarget("down", currentMoveSize)
+			err := updateTarget("down", currentMoveSize)
+			if err != nil {
+				log.Fatalf("updateT err: %v", err)
+			}
 		case 'd':
-			client.updateTarget("right", currentMoveSize)
+			err := updateTarget("right", currentMoveSize)
+			if err != nil {
+				log.Fatalf("updateT err: %v", err)
+			}
 		case '<':
 			currentMoveSize *= 10.0
 		case '>':

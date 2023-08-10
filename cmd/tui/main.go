@@ -5,9 +5,12 @@ import (
 	"flag"
 	"log"
 	"math"
+	"os"
+	"os/signal"
 
 	sun "github.com/mykldog7/heliostat2/pkg/types"
 	"github.com/rivo/tview"
+	"nhooyr.io/websocket"
 )
 
 var (
@@ -19,12 +22,16 @@ var (
 	currentMoveSize float64            //size to adjust the target by in relative mode
 	config          *sun.Config        //config structure/values returned from controller
 	address         *string            //address/url of the websocket endpoint
-	client          WSClient           //connection/client of the heliostat server
 	connected       bool               //set if we are connected to a server
+	conn            *websocket.Conn    //connection to the server
+	ctx             context.Context    //context for the entire application, allows us to close the connection if anywhere in the app decides we are closing
 )
 
 func main() {
 	currentMoveSize = math.Pi / 180 //a single degree
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt)
 
 	//Command line arguments (if any)
 	address = flag.String("connect", "ws://localhost:8080", "provide a ws endpoint where controller is running")
@@ -33,18 +40,22 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	client, err := NewConnection(ctx, *address)
-	if err != nil {
-		log.Fatalf("Can't connect to %v. Error:%v", *address, err)
-	}
+	go func() {
+		err := StartConnection(ctx, *address)
+		if err != nil {
+			log.Fatalf("Error with connection to %v. Error:%v", *address, err)
+		}
+	}()
 
-	config, err = client.getConfig()
-	if err != nil {
-		log.Fatalf("Error getting config:%v", err)
-	}
+	go func() {
+		err := StartInterface()
+		if err != nil {
+			log.Fatalf("UI Err:%v", err)
+		}
+	}()
 
-	err = runUI()
-	if err != nil {
-		log.Fatal("UI Err:%v", err)
-	}
+	//wait for a termination signal, then clean-up when its recieved
+	<-sigs
+	log.Printf("Terminating...")
+	cancel()
 }

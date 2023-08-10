@@ -7,7 +7,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-func runUI() error {
+func StartInterface() error {
 	app = tview.NewApplication()
 
 	//actions available in the main menu
@@ -59,11 +59,6 @@ func displayAdjustTarget() {
 	//update displayed elements in details pane
 	details.Clear()
 	details.SetTitle(selectedAction)
-	notes = tview.NewTextView()
-	notes.SetBorder(true)
-	notes.SetTitle("Current Values(Radians)")
-	notes.SetScrollable(false)
-	notes.SetText(fmt.Sprintf("Azi: %v\nAlt: %v\n\nStep size: %.6f", config.Target.Azimuth, config.Target.Altitude, currentMoveSize))
 	options := tview.NewTable().SetBorders(false)
 	options.SetTitle("Press Buttons to Adjust").SetTitleColor(tcell.ColorForestGreen)
 	options.SetBorder(true)
@@ -74,7 +69,6 @@ func displayAdjustTarget() {
 	options.SetCell(4, 0, tview.NewTableCell("(<) Inc").SetBackgroundColor(tcell.ColorDarkBlue))
 	options.SetCell(4, 2, tview.NewTableCell("(>) Dec").SetBackgroundColor(tcell.ColorDarkBlue))
 
-	details.AddItem(notes, 0, 1, false)
 	details.AddItem(options, 0, 1, true)
 	details.SetInputCapture(adjustTargetEventHandler)
 
