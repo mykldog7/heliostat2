@@ -22,12 +22,7 @@ func StartInterface() error {
 	details.SetBorder(true)
 	details.AddItem(tview.NewTextArea().SetText("\"Tui\" used to manage a heliostat server/controller by sending messages over a websocket.", false), 0, 1, false)
 
-	connectionStatus := ""
-	if connected {
-		connectionStatus = fmt.Sprintf("Connected to %v", *address)
-	} else {
-		connectionStatus = "not connected"
-	}
+	connectionStatus := fmt.Sprintf("Connected to %v", *address)
 	menuFrame := tview.NewFrame(actions).SetBorders(0, 0, 0, 0, 0, 0).AddText(connectionStatus, false, tview.AlignCenter, tcell.ColorDarkGreen)
 
 	menuLayout := tview.NewFlex().

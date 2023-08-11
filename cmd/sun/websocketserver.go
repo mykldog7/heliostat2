@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -106,8 +105,8 @@ func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.C
 			if err != nil {
 				errC <- err
 			}
+			log.Printf("Write message: %v", string(m))
 			w.Write(m)
-			log.Printf("write mesg:%v", string(m))
 			err = w.Close()
 			if err != nil {
 				errC <- err
@@ -118,20 +117,15 @@ func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.C
 	//reader, whenever something can be read, read it then drop or send onwards(to control loop)
 	go func() {
 		for {
-			typ, r, err := c.Reader(ctx)
-			if err != nil {
-				errC <- err
-			}
+			typ, b, err := c.Read(ctx)
 			if typ != websocket.MessageText {
 				outward <- []byte("only text(json) websocket messages can be handled")
 				continue
 			}
-
-			b, err := io.ReadAll(r)
 			if err != nil {
 				errC <- err
 			}
-			log.Printf("read mesg: %v", string(b))
+			log.Printf("Read message: %v", string(b))
 
 			msg := types.Message{}
 			err = json.Unmarshal(b, &msg)

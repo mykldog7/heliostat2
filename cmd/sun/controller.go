@@ -24,14 +24,18 @@ type Controller struct {
 }
 
 func NewController(inChan <-chan types.Message, outChan chan<- []byte, grbl *GrblArduino) Controller {
-	defaultPeriod, _ := time.ParseDuration("5s")
+	defaultPeriod, _ := time.ParseDuration("10s")
 	defaultLat, defaultLong := 174.8860, -40.9006
 	initialTime := time.Date(2023, 1, 1, 12, 00, 0, 0, time.Local)
 	return Controller{
 		activeConfig: types.Config{
 			Location:        types.Location{Lat: defaultLat, Long: defaultLong},
 			OverrideTime:    initialTime,
-			TimeProgression: 60.0},
+			TimeProgression: 60.0,
+			Target: struct {
+				Altitude float64 "json:\"alt\""
+				Azimuth  float64 "json:\"azi\""
+			}{Altitude: 10.0, Azimuth: 20.0}},
 		in:                inChan,
 		publish:           outChan,
 		updatePeriod:      defaultPeriod,
@@ -85,7 +89,7 @@ func (c Controller) Start(ctx context.Context) error {
 
 			//recalculate desired position
 			mAzi, mAlt := c.RecalculateDesiredMirrorPosition()
-			log.Printf("DesiredMirrorPos: azi:%v, alt:%v", mAzi, mAlt)
+			log.Printf("Calculated Desired Mirror Position: azi:%v, alt:%v", mAzi, mAlt)
 			mAzi_Deg := radToDeg(mAzi)
 			mAlt_Deg := radToDeg(mAlt)
 			//convert position to GCode..
@@ -93,13 +97,12 @@ func (c Controller) Start(ctx context.Context) error {
 			if err != nil {
 				log.Printf("%v", err)
 			}
-			log.Printf("Sending %v to grbl for moment %v", strings.TrimSuffix(string(code), "\n"), c.cTime())
 			resp, err := c.grbl.GrblSendCommandGetResponse(code)
 			if err != nil {
-				log.Printf("err: %v", err)
+				log.Printf("Error from GRBL: %v", err)
 				return err
 			}
-			log.Printf("Response: %v", string(resp))
+			log.Printf("Sent %v to grbl for moment %v ... got response \"%v\"", strings.TrimSuffix(string(code), "\n"), c.cTime(), string(resp[0:2]))
 			//c.publish <- []byte(fmt.Sprintf("Sent %v to grbl at: %v", string(code), tick)) //this will generally cause problems for the clients, if they are expecting something else
 		}
 	}

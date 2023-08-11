@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"math"
 	"os"
 	"os/signal"
+	"sync"
 
 	sun "github.com/mykldog7/heliostat2/pkg/types"
 	"github.com/rivo/tview"
@@ -22,9 +24,8 @@ var (
 	currentMoveSize float64            //size to adjust the target by in relative mode
 	config          *sun.Config        //config structure/values returned from controller
 	address         *string            //address/url of the websocket endpoint
-	connected       bool               //set if we are connected to a server
 	conn            *websocket.Conn    //connection to the server
-	ctx             context.Context    //context for the entire application, allows us to close the connection if anywhere in the app decides we are closing
+	toServer        chan []byte        //channel to send messages to the server, ui will send messages here
 )
 
 func main() {
@@ -40,22 +41,44 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go func() {
-		err := StartConnection(ctx, *address)
-		if err != nil {
-			log.Fatalf("Error with connection to %v. Error:%v", *address, err)
-		}
-	}()
+	//Error channel
+	errChan := make(chan error)
 
-	go func() {
+	//Make UI wait for connection
+	var uiCanStart sync.Mutex
+	uiCanStart.Lock() //lock the UI until we are connected to the server
+
+	//Start Connection to Server
+	go func(ctx context.Context, alllowUI *sync.Mutex) {
+		err := StartConnection(ctx, *address, alllowUI)
+		if err != nil {
+			errChan <- fmt.Errorf("Error with connection to %v, Error: %v", *address, err)
+		}
+	}(ctx, &uiCanStart)
+
+	//START UI
+	go func(mu *sync.Mutex) {
+		uiCanStart.Lock() //wait for connection to be established, before starting the UI
 		err := StartInterface()
 		if err != nil {
-			log.Fatalf("UI Err:%v", err)
+			errChan <- fmt.Errorf("Error with UI, Error: %v", err)
 		}
-	}()
+		errChan <- fmt.Errorf("UI Exited") //this is a normal exit
+	}(&uiCanStart)
 
-	//wait for a termination signal, then clean-up when its recieved
-	<-sigs
-	log.Printf("Terminating...")
-	cancel()
+	//wait for a termination signal, or error, then clean-up when its recieved
+	select {
+	case <-sigs:
+		log.Printf("Recieved termination signal...")
+		app.Stop()
+		cancel()
+
+	case err := <-errChan:
+		if err.Error() != "UI Exited" { //was it a normal exit
+			log.Printf("Recieved error: %v", err)
+		}
+		app.Stop()
+		cancel()
+	}
+
 }
