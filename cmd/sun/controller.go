@@ -70,7 +70,7 @@ func (c Controller) Start(ctx context.Context) error {
 			case "GetConfig":
 				c.HandleGetActiveConfig()
 
-			case "move":
+			case "MoveTargetRelative":
 				mtr := types.MoveTargetRelative{}
 				json.Unmarshal(msg.D, &mtr)
 				c.HandleTargetAdjustment(mtr)

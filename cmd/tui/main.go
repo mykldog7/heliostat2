@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -9,23 +8,18 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"time"
 
+	"github.com/mykldog7/heliostat2/pkg/types"
 	sun "github.com/mykldog7/heliostat2/pkg/types"
-	"github.com/rivo/tview"
-	"nhooyr.io/websocket"
 )
 
 var (
-	app             *tview.Application //main app
-	details         *tview.Flex        //details (right-hand) pane
-	notes           *tview.TextView    //place to provide text details to the operator
-	actions         *tview.List        //actions (left-hand) pane
 	selectedAction  string             //label of the currently selected action
 	currentMoveSize float64            //size to adjust the target by in relative mode
 	config          *sun.Config        //config structure/values returned from controller
 	address         *string            //address/url of the websocket endpoint
-	conn            *websocket.Conn    //connection to the server
-	toServer        chan []byte        //channel to send messages to the server, ui will send messages here
+	toServer        chan types.Message //channel of messages that we will send to server
 )
 
 func main() {
@@ -38,9 +32,6 @@ func main() {
 	address = flag.String("connect", "ws://localhost:8080", "provide a ws endpoint where controller is running")
 	flag.Parse()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	//Error channel
 	errChan := make(chan error)
 
@@ -48,13 +39,16 @@ func main() {
 	var uiCanStart sync.Mutex
 	uiCanStart.Lock() //lock the UI until we are connected to the server
 
+	// Outgoing Channel
+	toServer = make(chan types.Message)
+
 	//Start Connection to Server
-	go func(ctx context.Context, alllowUI *sync.Mutex) {
-		err := StartConnection(ctx, *address, alllowUI)
+	go func(alllowUI *sync.Mutex) {
+		err := StartConnection(*address, alllowUI)
 		if err != nil {
 			errChan <- fmt.Errorf("Error with connection to %v, Error: %v", *address, err)
 		}
-	}(ctx, &uiCanStart)
+	}(&uiCanStart)
 
 	//START UI
 	go func(mu *sync.Mutex) {
@@ -67,18 +61,19 @@ func main() {
 	}(&uiCanStart)
 
 	//wait for a termination signal, or error, then clean-up when its recieved
-	select {
-	case <-sigs:
-		log.Printf("Recieved termination signal...")
-		app.Stop()
-		cancel()
+	for {
+		select {
+		case <-sigs:
+			errChan <- fmt.Errorf("Termination Signal")
 
-	case err := <-errChan:
-		if err.Error() != "UI Exited" { //was it a normal exit
-			log.Printf("Recieved error: %v", err)
+		case err := <-errChan:
+			if err.Error() != "UI Exited" { //was it a normal exit
+				log.Printf("Recieved: %v", err)
+				os.Exit(1)
+			}
+			toServer <- sun.Message{T: "close"}
+			time.Sleep(500 * time.Millisecond)
+			os.Exit(0)
 		}
-		app.Stop()
-		cancel()
 	}
-
 }

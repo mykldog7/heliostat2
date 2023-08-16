@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -11,6 +12,10 @@ import (
 type Message struct {
 	T string `json:"t"`
 	D []byte
+}
+
+func (m *Message) String() string {
+	return fmt.Sprintf("[Type: %v, Payload: %v]", m.T, string(m.D))
 }
 
 //incoming signals (to be processed by the server)

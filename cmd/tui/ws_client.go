@@ -1,77 +1,79 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"sync"
+	"time"
 
+	"github.com/gorilla/websocket"
 	sun "github.com/mykldog7/heliostat2/pkg/types"
-	"nhooyr.io/websocket"
 )
 
-func StartConnection(ctx context.Context, address string, unlockUI *sync.Mutex) error {
-	conn, _, err := websocket.Dial(ctx, address, nil) // set the global connection
+func StartConnection(address string, unlockUI *sync.Mutex) error {
+	//Attempt to connect to the given address, if error pass up to caller
+	conn, _, err := websocket.DefaultDialer.Dial(address, nil)
 	if err != nil {
 		return err
 	}
-	unlockUI.Unlock() //unlock the UI, allowing the UI goroutine to proceed
+	//clean closure of the ws connection
+
+	unlockUI.Unlock() //unlock the UI, allowing the UI goroutine to display the ui
 
 	//Channel to wait for either goroutine to return an error
 	errC := make(chan error)
 
-	//Handle incoming messages
+	//Handle inward messages
 	go func() {
 		for {
-			typ, r, err := conn.Reader(ctx)
+			typ, d, err := conn.ReadMessage()
 			if err != nil {
 				errC <- err
 			}
-			if typ != websocket.MessageText {
+			if typ != websocket.TextMessage {
 				errC <- fmt.Errorf("got unexpected message type %v", typ)
 			}
-			data, err := io.ReadAll(r)
-			if err != nil {
-				errC <- err
-			}
 			msg := &sun.Message{}
-			err = json.Unmarshal(data, msg)
+			err = json.Unmarshal(d, msg)
 			if err != nil {
 				errC <- err
 			}
 			switch msg.T {
 			case "ActiveConfig":
-				err = json.Unmarshal(data, config) //unmarshal into global config, yikes!
+				err = json.Unmarshal(d, config) //unmarshal into global config, yikes!
 				if err != nil {
 					errC <- err
 				}
-				log.Printf("got activeConfig: %v", string(data))
+				log.Printf("got activeConfig: %v", string(d))
 			case "Ack":
-				log.Printf("got ack: %v", string(data))
+				log.Printf("got ack: %v", string(d))
 			default:
-				log.Printf("got unknown message type: %v", msg.T)
+				log.Printf("got unknown message type: %v with data: %v", msg.T, string(d))
 			}
 		}
 	}()
 
-	//Handle outgoing messages
-	go func(ctx context.Context) {
+	//Handle outward messages
+	go func() {
 		for {
 			m := <-toServer
-			log.Printf("Sending message: %v", string(m))
-			w, err := conn.Writer(ctx, websocket.MessageText)
-			if err != nil {
-				errC <- err
+			if m.T == "close" {
+				//close the connection gracefully
+				conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "disconnect"), time.Now().Add(500*time.Millisecond))
+				errC <- nil
+				return //means we never write anything else
 			}
-			w.Write(m)
-			err = w.Close()
+			payload, err := json.Marshal(m.D)
+			if err != nil {
+			}
+			errC <- fmt.Errorf("Trouble marshalling json of %v", m)
+			err = conn.WriteMessage(websocket.TextMessage, payload)
 			if err != nil {
 				errC <- err
 			}
 		}
-	}(ctx)
+	}()
 
-	return <-errC //wait for either goroutine to return an error
+	return <-errC //pass-up if either goroutine to return an error
 }

@@ -7,29 +7,45 @@ import (
 	"github.com/rivo/tview"
 )
 
+var (
+	app     *tview.Application //main app
+	details *tview.Flex        //details (right-hand) pane
+	notes   *tview.TextView    //place to provide text details to the operator
+	menu    *tview.Flex
+	ui      *tview.Flex
+	actions *tview.List //actions (left-hand) pane
+)
+
 func StartInterface() error {
 	app = tview.NewApplication()
 
 	//actions available in the main menu
 	actions = tview.NewList().
 		AddItem("Quit", "close app", 'q', func() { app.Stop() }).
-		AddItem("Adjust Target", "move the target with w,a,s,d", 'm', displayAdjustTarget).
+		AddItem("Adjust Target", "move the target with w,a,s,d. adjust step with '<', '>'", 'm', displayAdjustTarget).
 		AddItem("Adjust Lat/Long", "set the mirror lat, long", 'l', displayLatLong).
 		AddItem("Configure Time", "override the machine time", 'o', displayAdjustTime)
 	actions.SetBorder(true).SetTitle("Available Actions")
 
+	//right hand 'details' area updated depending on menu item selected
 	details = tview.NewFlex()
 	details.SetBorder(true)
 	details.AddItem(tview.NewTextArea().SetText("\"Tui\" used to manage a heliostat server/controller by sending messages over a websocket.", false), 0, 1, false)
 
-	connectionStatus := fmt.Sprintf("Connected to %v", *address)
-	menuFrame := tview.NewFrame(actions).SetBorders(0, 0, 0, 0, 0, 0).AddText(connectionStatus, false, tview.AlignCenter, tcell.ColorDarkGreen)
+	//notes area at base of menu
+	notes = tview.NewTextView().SetText(fmt.Sprintf("Connected to %v", *address))
 
-	menuLayout := tview.NewFlex().
-		AddItem(menuFrame, 0, 1, true).
+	//menu layout
+	menu := tview.NewFlex().SetDirection(tview.FlexRow)
+	menu.AddItem(actions, 0, 8, true)
+	menu.AddItem(notes, 0, 1, true)
+
+	//main layout
+	ui = tview.NewFlex().
+		AddItem(menu, 0, 1, true).
 		AddItem(details, 0, 1, false)
 
-	app.SetRoot(menuLayout, true)
+	app.SetRoot(ui, true)
 	//add an 'esc' key handler at the top level to return to the menu
 	app.SetInputCapture(func(e *tcell.EventKey) *tcell.EventKey {
 		if e.Key() == tcell.KeyEscape {
@@ -64,8 +80,8 @@ func displayAdjustTarget() {
 	options.SetCell(4, 0, tview.NewTableCell("(<) Inc").SetBackgroundColor(tcell.ColorDarkBlue))
 	options.SetCell(4, 2, tview.NewTableCell("(>) Dec").SetBackgroundColor(tcell.ColorDarkBlue))
 
-	details.AddItem(options, 0, 1, true)
 	details.SetInputCapture(adjustTargetEventHandler)
+	details.AddItem(options, 0, 1, true)
 
 	app.SetFocus(details)
 }

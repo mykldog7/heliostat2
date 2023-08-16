@@ -8,15 +8,15 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"github.com/mykldog7/heliostat2/pkg/types"
-	"nhooyr.io/websocket"
 )
 
 // websocket handler is instantiated each time we have a client connect
 // it must register its outward channel with the SubManager to get outward messages
 type wsHandler struct {
 	// logf controls where logs are sent.
-	logf    func(f string, v ...interface{})
 	inward  chan<- types.Message
 	manager *SubManager
 }
@@ -30,7 +30,6 @@ func startWebsocketServer(address string, ctx context.Context, inward chan<- typ
 	sm := NewSubManger(publish)
 	s := &http.Server{
 		Handler: wsHandler{
-			logf:    log.Printf,
 			inward:  inward,
 			manager: sm,
 		},
@@ -57,30 +56,29 @@ func startWebsocketServer(address string, ctx context.Context, inward chan<- typ
 }
 
 func (s wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		Subprotocols:       []string{""},
-		InsecureSkipVerify: true,
-	})
+	upgrader := websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+	}
+	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		s.logf("%v", err)
+		log.Println(err)
 		return
 	}
-	defer c.Close(websocket.StatusInternalError, "connection closing")
 
-	log.Printf("success websocket connection, passing to handler...")
+	defer c.Close()
+	id, _ := uuid.NewUUID()
 
-	err = s.manageWebsocketConnection(r.Context(), c)
-	if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
-		s.logf("closed websocket")
-		return
-	}
+	log.Printf("Success websocket upgrade... connection id:%v", id)
+
+	err = s.manageWebsocketConnection(r.Context(), c, id)
 	if err != nil {
-		s.logf("error with websocket to %v: %v", r.RemoteAddr, err)
+		log.Printf("error with websocket to %v: %v", r.RemoteAddr, err)
 		return
 	}
 }
 
-func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.Conn) error {
+func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.Conn, id uuid.UUID) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -98,28 +96,28 @@ func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.C
 	errC := make(chan error)
 
 	//sender, anything on 'out' queue is written to websocket
-	go func() {
+	go func(c *websocket.Conn) {
 		for {
 			m := <-outward
-			w, err := c.Writer(ctx, websocket.MessageText)
-			if err != nil {
-				errC <- err
-			}
 			log.Printf("Write message: %v", string(m))
-			w.Write(m)
-			err = w.Close()
+			err := c.WriteMessage(websocket.TextMessage, m)
 			if err != nil {
 				errC <- err
 			}
 		}
-	}()
+	}(c)
 
 	//reader, whenever something can be read, read it then drop or send onwards(to control loop)
-	go func() {
+	go func(c *websocket.Conn) {
 		for {
-			typ, b, err := c.Read(ctx)
-			if typ != websocket.MessageText {
-				outward <- []byte("only text(json) websocket messages can be handled")
+			typ, b, err := c.ReadMessage()
+			if websocket.IsCloseError(err, 1000) {
+				log.Printf("Client diconnected. connection id:%v", id)
+				errC <- nil
+				return
+			}
+			if typ != websocket.TextMessage {
+				outward <- []byte("{\"error\":\"only text(json) websocket messages can be handled\"}")
 				continue
 			}
 			if err != nil {
@@ -130,13 +128,13 @@ func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.C
 			msg := types.Message{}
 			err = json.Unmarshal(b, &msg)
 			if err != nil {
-				outward <- []byte("unhandled: need valid json with 't' key specifying a valid type")
+				outward <- []byte("{\"error\":\"unhandled input: need valid json with 't' key specifying a valid type\"}")
 				continue //not a message we can work with, skip and continue
 			}
 			msg.D = b       //save data into message so it can be unmarshalled again later
 			s.inward <- msg //send the msg to the controller to be handled
 		}
-	}()
+	}(c)
 
 	return <-errC
 }
