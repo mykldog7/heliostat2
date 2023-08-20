@@ -11,11 +11,11 @@ import (
 // Message is the wrapper for all messages, it contains a string identifying the type of message and the message data
 type Message struct {
 	T string `json:"t"`
-	D []byte
+	D []byte `json:"d"`
 }
 
-func (m *Message) String() string {
-	return fmt.Sprintf("[Type: %v, Payload: %v]", m.T, string(m.D))
+func (m Message) String() string {
+	return fmt.Sprintf("[Type: %s, Payload: %s]", m.T, m.D)
 }
 
 //incoming signals (to be processed by the server)
