@@ -16,25 +16,25 @@ func adjustTargetEventHandler(e *tcell.EventKey) *tcell.EventKey {
 		case 'w':
 			err := updateTarget("up", currentMoveSize)
 			if err != nil {
-				log.Fatalf("updateT err: %v", err)
+				log.Fatalf("err: %v", err)
 			}
 			return nil
 		case 'a':
 			err := updateTarget("left", currentMoveSize)
 			if err != nil {
-				log.Fatalf("updateT err: %v", err)
+				log.Fatalf("err: %v", err)
 			}
 			return nil
 		case 's':
 			err := updateTarget("down", currentMoveSize)
 			if err != nil {
-				log.Fatalf("updateT err: %v", err)
+				log.Fatalf("err: %v", err)
 			}
 			return nil
 		case 'd':
 			err := updateTarget("right", currentMoveSize)
 			if err != nil {
-				log.Fatalf("updateT err: %v", err)
+				log.Fatalf("err: %v", err)
 			}
 			return nil
 		case '<':

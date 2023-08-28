@@ -10,6 +10,8 @@ type Config struct {
 	TimeProgression float64   `json:"progression_factor"`
 	OverrideTime    time.Time `json:"override_time"` // the 'sim' or override time
 	Location        Location  `json:"loc"`
+	AziOffset       float64   `json:"azimuth_offset"`
+	AltOffset       float64   `json:"altitude_offset"` //If the mirror is not facing true south, at horison, in the zero position, use these offsets to adjust
 	Target          struct {
 		Altitude float64 `json:"alt"`
 		Azimuth  float64 `json:"azi"`
