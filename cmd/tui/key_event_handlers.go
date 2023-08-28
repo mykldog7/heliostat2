@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 
 	"github.com/gdamore/tcell/v2"
@@ -37,10 +38,12 @@ func adjustTargetEventHandler(e *tcell.EventKey) *tcell.EventKey {
 			}
 			return nil
 		case '<':
-			currentMoveSize *= 10.0
+			currentMoveSize *= 2.0
+			notes.SetText(fmt.Sprintf("Move size(degrees): %v", radToDeg(currentMoveSize)))
 			return nil
 		case '>':
-			currentMoveSize *= 0.1
+			currentMoveSize *= 0.5
+			notes.SetText(fmt.Sprintf("Move size(degrees): %v", radToDeg(currentMoveSize)))
 			return nil
 		default:
 			return e
@@ -51,9 +54,8 @@ func adjustTargetEventHandler(e *tcell.EventKey) *tcell.EventKey {
 
 // updateTarget pushes new azi/alt to the server
 func updateTarget(dir string, amount float64) error {
-	payload := &sun.MoveTargetRelative{Direction: dir, Amount: amount}
+	payload := sun.MoveTargetRelative{Direction: dir, Amount: amount}
 	payload_bytes, _ := json.Marshal(payload)
-	notes.SetText(string(payload_bytes))
 	toServer <- sun.Message{T: "MoveTargetRelative", D: payload_bytes}
 	return nil
 }

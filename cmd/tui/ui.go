@@ -37,7 +37,7 @@ func StartInterface() error {
 
 	//menu layout
 	menu := tview.NewFlex().SetDirection(tview.FlexRow)
-	menu.AddItem(actions, 0, 8, true)
+	menu.AddItem(actions, 0, 4, true)
 	menu.AddItem(notes, 0, 1, true)
 
 	//main layout

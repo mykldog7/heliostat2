@@ -45,9 +45,9 @@ func StartConnection(address string, unlockUI *sync.Mutex) error {
 				if err != nil {
 					errC <- err
 				}
-				log.Printf("got activeConfig: %v", string(d))
+				//log.Printf("got activeConfig: %v", string(d))
 			case "Ack":
-				log.Printf("got ack: %v", string(d))
+				//log.Printf("got ack: %v", string(d))
 			default:
 				log.Printf("got unknown message type: %v with data: %v", msg.T, string(d))
 			}
@@ -64,10 +64,14 @@ func StartConnection(address string, unlockUI *sync.Mutex) error {
 				errC <- nil
 				return //means we never write anything else
 			}
-			payload, err := json.Marshal(m.D)
 			if err != nil {
+				errC <- fmt.Errorf("Trouble marshalling json of %v", m)
 			}
-			errC <- fmt.Errorf("Trouble marshalling json of %v", m)
+			payload, err := json.Marshal(m)
+			if err != nil {
+				errC <- err
+			}
+			//notes.SetText(string(payload))
 			err = conn.WriteMessage(websocket.TextMessage, payload)
 			if err != nil {
 				errC <- err

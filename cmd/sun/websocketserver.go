@@ -131,7 +131,6 @@ func (s wsHandler) manageWebsocketConnection(ctx context.Context, c *websocket.C
 				outward <- []byte("{\"error\":\"unhandled input: need valid json with 't' key specifying a valid type\"}")
 				continue //not a message we can work with, skip and continue
 			}
-			msg.D = b       //save data into message so it can be unmarshalled again later
 			s.inward <- msg //send the msg to the controller to be handled
 		}
 	}(c)
