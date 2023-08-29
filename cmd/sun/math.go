@@ -7,23 +7,38 @@ import (
 	"github.com/256dpi/gcode"
 )
 
-// PositionToGCode builds a GCode command to send the mirror to the desired azi/ele
-// azimuth -pi/2 =>  x=0
-// azimuth increases, x increases
-func PositionToGCode(azi float64, ele float64) ([]byte, error) {
-	//check valid azimuth
-	if azi > 180.0 || azi < -180.0 {
-		return nil, fmt.Errorf("unexpected value for azimuth: %v", azi)
+// PositionToGCode builds a GCode command to send the mirror to the desired azi/alt
+// The mirror's normal is moved to be at the given azi/alt, in degrees
+func PositionToGCode(azi float64, alt float64, azimuth_offset float64, altitude_offset float64) ([]byte, error) {
+	//apply offsets, and wrap if needed
+	command_azi := azi - azimuth_offset
+	if command_azi > 180.0 {
+		command_azi = command_azi - 360.0
 	}
-	if ele > 90.0 || ele < 0.0 {
-		return nil, fmt.Errorf("unexpected value for elevation: %v", ele)
+	if command_azi < -180.0 {
+		command_azi = command_azi + 360.0
+	}
+	command_alt := alt - altitude_offset
+	if command_alt > 90.0 {
+		command_alt = 90.0
+	}
+	if command_alt < 0.0 {
+		command_alt = 0.0
+	}
+
+	//check valid azimuth
+	if command_azi > 180.0 || command_azi < -180.0 {
+		return nil, fmt.Errorf("unexpected value for azimuth: %v", command_azi)
+	}
+	if command_alt > 90.0 || command_alt < 0.0 {
+		return nil, fmt.Errorf("unexpected value for altitude: %v", command_alt)
 	}
 
 	line := gcode.Line{
 		Codes: make([]gcode.GCode, 0, 2),
 	}
-	line.Codes = append(line.Codes, gcode.GCode{Letter: "X", Value: azi})
-	line.Codes = append(line.Codes, gcode.GCode{Letter: "Y", Value: ele})
+	line.Codes = append(line.Codes, gcode.GCode{Letter: "X", Value: command_azi})
+	line.Codes = append(line.Codes, gcode.GCode{Letter: "Y", Value: command_alt})
 	return []byte(line.String()), nil
 }
 

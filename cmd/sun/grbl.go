@@ -34,6 +34,13 @@ func NewGrblArduino(ctx context.Context) (*GrblArduino, error) {
 	}
 	log.Printf("Connected to Grbl on %v\n", grbl.portName)
 
+	//Zero the machine, hopefully its correctly positioned, if not ... turn it off, re-position and restart
+	_, err = grbl.GrblSendCommandGetResponse([]byte("G92 X0 Y0 Z0\n"))
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("Set current machine position to 0 azimuth, 0 altitude.")
+
 	//Control loop, manages grbl status pings.
 	go func() {
 		log.Printf("Grbl control loop started...")
@@ -77,7 +84,7 @@ func (g *GrblArduino) Connect(mode *serial.Mode) error {
 
 		g.port = p
 		g.portName = port
-		g.port.SetReadTimeout(time.Second * 2)
+		g.port.SetReadTimeout(time.Second * 1)
 		err = g.GrblReadBanner()
 		if err != nil {
 			log.Printf("error detecting banner on port %v: %v", port, err)
@@ -120,7 +127,7 @@ func (g *GrblArduino) GrblReadBanner() error {
 	defer g.mutex.Unlock()
 	//storage to gather bytes
 	_, err := g.port.Write([]byte{0xd, 0xa, 0xd, 0xa}) // wake up grbl
-	time.Sleep(2 * time.Second)                        // give it a chance to come up
+	time.Sleep(1500 * time.Millisecond)                // give it a chance to come up
 	if err != nil {
 		return err
 	}

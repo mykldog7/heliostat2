@@ -92,25 +92,8 @@ func (c Controller) Start(ctx context.Context) error {
 			mAzi_Deg := radToDeg(mAzi)
 			mAlt_Deg := radToDeg(mAlt)
 
-			//apply offsets, and wrap if needed
-			mAzi_Deg = mAzi_Deg - c.activeConfig.AziOffset
-			if mAzi_Deg > 180.0 {
-				mAzi_Deg = mAzi_Deg - 360.0
-			}
-			if mAzi_Deg < -180.0 {
-				mAzi_Deg = mAzi_Deg + 360.0
-			}
-
-			mAlt_Deg = mAlt_Deg - c.activeConfig.AltOffset
-			if mAlt_Deg > 90.0 {
-				mAlt_Deg = 90.0
-			}
-			if mAlt_Deg < 0.0 {
-				mAlt_Deg = 0.0
-			}
-
 			//convert position to GCode..
-			code, err := PositionToGCode(mAzi_Deg, mAlt_Deg)
+			code, err := PositionToGCode(mAzi_Deg, mAlt_Deg, radToDeg(c.activeConfig.AziOffset), radToDeg(c.activeConfig.AltOffset))
 			if err != nil {
 				log.Printf("%v", err)
 			}
